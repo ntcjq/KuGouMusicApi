@@ -52,6 +52,7 @@
     "dotenv": "^16.4.5",
     "esbuild": "^0.25.3",
     "express": "^4.18.2",
+    "node-cron": "^4.2.1",
     "pako": "^2.1.0",
     "qrcode": "^1.5.3",
     "safe-decode-uri-component": "^1.2.1"

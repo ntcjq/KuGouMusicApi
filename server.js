@@ -6,6 +6,7 @@ const { cookieToJson, randomNumber, randomString } = require('./util/util');
 const { createRequest } = require('./util/request');
 const dotenv = require('dotenv');
 const cache = require('./util/apicache').middleware;
+const cron = require('node-cron');
 
 /**
  * @typedef {{
@@ -23,6 +24,10 @@ const cache = require('./util/apicache').middleware;
 
 const mid = randomNumber(39).toString();
 const serverDev = randomString(10).toUpperCase();
+
+// 内存存储登录信息和定时任务状态
+const loginStore = {};
+const cronJobs = {};
 
 const envPath = path.join(process.cwd(), '.env');
 if (fs.existsSync(envPath)) {
@@ -141,6 +146,159 @@ async function consturctServer(moduleDefs) {
 
   // Cache
   app.use(cache('2 minutes', (_, res) => res.statusCode === 200));
+
+  /**
+   * 登录信息管理 API
+   */
+  // 保存登录信息到内存
+  app.post('/api/saveLogin', express.json(), (req, res) => {
+    const { userid, token } = req.body;
+    if (!userid || !token) {
+      return res.json({ status: 0, msg: '缺少userid或token' });
+    }
+    
+    loginStore[userid] = { userid, token, savedAt: new Date() };
+    console.log(`[Login] 保存登录信息: userid=${userid}`);
+    res.json({ status: 1, msg: '登录信息已保存到服务器内存' });
+  });
+
+  // 获取所有已保存的登录信息
+  app.get('/api/getLogins', (req, res) => {
+    const logins = Object.values(loginStore).map(item => ({
+      userid: item.userid,
+      token: item.token,
+      savedAt: item.savedAt
+    }));
+    res.json({ status: 1, data: logins });
+  });
+
+  // 删除登录信息
+  app.post('/api/deleteLogin', express.json(), (req, res) => {
+    const { userid } = req.body;
+    if (!userid) {
+      return res.json({ status: 0, msg: '缺少userid' });
+    }
+    
+    delete loginStore[userid];
+    console.log(`[Login] 删除登录信息: userid=${userid}`);
+    res.json({ status: 1, msg: '登录信息已删除' });
+  });
+
+  // 清空所有登录信息
+  app.post('/api/clearLogins', (req, res) => {
+    Object.keys(loginStore).forEach(key => delete loginStore[key]);
+    console.log('[Login] 已清空所有登录信息');
+    res.json({ status: 1, msg: '所有登录信息已清空' });
+  });
+
+  // 获取定时任务状态
+  app.get('/api/getCronStatus', (req, res) => {
+    const status = {};
+    for (const userid in cronJobs) {
+      status[userid] = cronJobs[userid].running ? '运行中' : '已停止';
+    }
+    res.json({ status: 1, data: status });
+  });
+
+  /**
+   * 定时签到 API
+   */
+  app.post('/api/startAutoCron', express.json(), async (req, res) => {
+    const { userid, time = '0 2 * * *' } = req.body;
+    
+    if (!userid || !loginStore[userid]) {
+      return res.json({ status: 0, msg: '用户不存在或未登录' });
+    }
+
+    // 如果已有定时任务则停止
+    if (cronJobs[userid]) {
+      cronJobs[userid].stop();
+      delete cronJobs[userid];
+    }
+
+    const token = loginStore[userid].token;
+    const headers = { 'Cookie': `token=${token}; userid=${userid}` };
+
+    const job = cron.schedule(time, async () => {
+      console.log(`[Cron] 开始自动签到: userid=${userid}`);
+      try {
+        // 获取用户信息
+        const userRes = await createRequest({
+          url: 'http://localhost:3000/user/detail',
+          headers: headers
+        });
+        const userDetail = JSON.parse(userRes);
+
+        if (!userDetail?.data?.nickname) {
+          console.log(`[Cron] token过期: userid=${userid}`);
+          return;
+        }
+
+        console.log(`[Cron] 用户 ${userDetail.data.nickname} 开始签到`);
+
+        // 听歌领取VIP
+        const listenRes = await createRequest({
+          url: 'http://localhost:3000/youth/listen/song',
+          headers: headers
+        });
+        const listen = JSON.parse(listenRes);
+        console.log(`[Cron] 听歌结果: ${listen.status === 1 ? '成功' : '失败/已领取'}`);
+
+        // 领取VIP（循环8次）
+        for (let i = 1; i <= 8; i++) {
+          const adRes = await createRequest({
+            url: 'http://localhost:3000/youth/vip',
+            headers: headers
+          });
+          const ad = JSON.parse(adRes);
+
+          if (ad.status === 1) {
+            console.log(`[Cron] 第${i}次领取成功`);
+            if (i !== 8) {
+              const randomDelay = 30000 + Math.random() * 10000; // 随机30-40秒
+              console.log(`[Cron] 等待${(randomDelay/1000).toFixed(1)}秒后继续...`);
+              await new Promise(resolve => setTimeout(resolve, randomDelay));
+            }
+          } else if (ad.error_code === 30002) {
+            console.log(`[Cron] 今日次数已用光`);
+            break;
+          } else {
+            console.log(`[Cron] 第${i}次领取失败`);
+            break;
+          }
+        }
+
+        // 获取VIP详情
+        const vipRes = await createRequest({
+          url: 'http://localhost:3000/user/vip/detail',
+          headers: headers
+        });
+        const vip = JSON.parse(vipRes);
+        if (vip.status === 1) {
+          console.log(`[Cron] VIP到期时间: ${vip.data.busi_vip[0].vip_end_time}`);
+        }
+      } catch (error) {
+        console.error(`[Cron] 签到出错: ${error.message}`);
+      }
+    });
+
+    cronJobs[userid] = job;
+    console.log(`[Cron] 已为用户 ${userid} 创建定时任务，执行时间: ${time}`);
+    res.json({ status: 1, msg: `定时任务已创建，执行时间: ${time}` });
+  });
+
+  app.post('/api/stopAutoCron', express.json(), (req, res) => {
+    const { userid } = req.body;
+    
+    if (!cronJobs[userid]) {
+      return res.json({ status: 0, msg: '未找到该用户的定时任务' });
+    }
+
+    cronJobs[userid].stop();
+    delete cronJobs[userid];
+    console.log(`[Cron] 已停止用户 ${userid} 的定时任务`);
+    res.json({ status: 1, msg: '定时任务已停止' });
+  });
 
   const moduleDefinitions = moduleDefs || (await getModulesDefinitions(path.join(__dirname, 'module'), {}));
 

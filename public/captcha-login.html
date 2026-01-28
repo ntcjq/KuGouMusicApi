@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>验证码登录 - 酷狗音乐 API</title>
+  </head>
+
+  <body>
+    <h1>酷狗 API - 验证码登录</h1>
+    <a href="./">返回首页</a>
+    
+    <div id="login-container">
+      <div id="phone-form">
+        <h2>第一步：输入手机号</h2>
+        <input 
+          type="tel" 
+          id="phone-input" 
+          placeholder="请输入手机号" 
+          maxlength="11"
+          style="padding: 10px; font-size: 16px; width: 200px;"
+        />
+        <button id="send-code-btn" onclick="sendCaptcha()">发送验证码</button>
+        <p id="send-status"></p>
+      </div>
+
+      <div id="code-form" style="display: none; margin-top: 30px;">
+        <h2>第二步：输入验证码</h2>
+        <p style="color: #999; font-size: 14px;">验证码已发送到您的手机</p>
+        <input 
+          type="text" 
+          id="code-input" 
+          placeholder="请输入验证码" 
+          maxlength="6"
+          style="padding: 10px; font-size: 16px; width: 150px;"
+        />
+        <button id="login-btn" onclick="loginWithCode()">登录</button>
+        <p id="login-status"></p>
+      </div>
+
+      <div id="json-result" style="display: none; margin-top: 30px;"></div>
+    </div>
+
+    <style>
+      html,
+      body {
+        height: 100vh;
+        width: 100vw;
+        margin: 30px 0 0;
+        padding: 0;
+        background: #ffffff;
+        text-align: center;
+        overflow: auto;
+      }
+
+      * {
+        color: rgb(100, 100, 100);
+      }
+
+      a {
+        color: #42b983;
+      }
+
+      #login-container {
+        margin: 30px auto;
+        padding: 20px;
+        max-width: 500px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background: #f9f9f9;
+      }
+
+      #phone-form, #code-form {
+        padding: 15px 0;
+      }
+
+      input[type="tel"],
+      input[type="text"] {
+        margin: 10px 5px;
+        padding: 10px;
+        font-size: 16px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+
+      button {
+        padding: 10px 20px;
+        font-size: 16px;
+        background-color: #42b983;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+        margin: 0 5px;
+      }
+
+      button:hover {
+        background-color: #369970;
+      }
+
+      button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+
+      #send-status, #login-status {
+        margin: 10px 0;
+        font-size: 14px;
+        color: #666;
+        min-height: 20px;
+      }
+
+      #json-result {
+        background-color: #f5f5f5;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        max-width: 500px;
+        margin: 20px auto;
+        max-height: 400px;
+        overflow: auto;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-all;
+        text-align: left;
+        color: #333;
+      }
+
+      h2 {
+        margin: 15px 0;
+      }
+    </style>
+
+    <script>
+      let phoneNumber = null;
+
+      async function sendCaptcha() {
+        const phoneInput = document.getElementById('phone-input');
+        const sendBtn = document.getElementById('send-code-btn');
+        const sendStatus = document.getElementById('send-status');
+        const phoneNumber = phoneInput.value.trim();
+
+        // 验证手机号格式
+        if (!phoneNumber || !/^1[3-9]\d{9}$/.test(phoneNumber)) {
+          sendStatus.textContent = '✗ 请输入有效的手机号';
+          sendStatus.style.color = 'red';
+          return;
+        }
+
+        try {
+          sendBtn.disabled = true;
+          sendStatus.textContent = '正在发送验证码...';
+          sendStatus.style.color = '#666';
+
+          const response = await fetch(`/captcha/sent?mobile=${phoneNumber}`);
+          const result = await response.json();
+
+          if (result.status === 1) {
+            console.log("验证码发送成功");
+            sendStatus.textContent = '✓ 验证码已发送';
+            sendStatus.style.color = 'green';
+            
+            // 保存手机号并显示验证码输入框
+            window.phoneNumber = phoneNumber;
+            document.getElementById('phone-form').style.display = 'none';
+            document.getElementById('code-form').style.display = 'block';
+            
+            // 聚焦到验证码输入框
+            document.getElementById('code-input').focus();
+          } else {
+            console.error("发送验证码失败:", result);
+            sendStatus.textContent = '✗ 发送失败: ' + (result.msg || '未知错误');
+            sendStatus.style.color = 'red';
+          }
+        } catch (error) {
+          console.error('请求出错:', error);
+          sendStatus.textContent = '✗ 请求出错: ' + error.message;
+          sendStatus.style.color = 'red';
+        } finally {
+          sendBtn.disabled = false;
+        }
+      }
+
+      async function loginWithCode() {
+        const codeInput = document.getElementById('code-input');
+        const loginBtn = document.getElementById('login-btn');
+        const loginStatus = document.getElementById('login-status');
+        const code = codeInput.value.trim();
+
+        if (!window.phoneNumber) {
+          loginStatus.textContent = '✗ 手机号信息丢失，请重新开始';
+          loginStatus.style.color = 'red';
+          return;
+        }
+
+        if (!code || code.length < 4) {
+          loginStatus.textContent = '✗ 请输入有效的验证码';
+          loginStatus.style.color = 'red';
+          return;
+        }
+
+        try {
+          loginBtn.disabled = true;
+          loginStatus.textContent = '正在登录...';
+          loginStatus.style.color = '#666';
+
+          const response = await fetch(`/login/cellphone?mobile=${window.phoneNumber}&code=${code}`);
+          const result = await response.json();
+
+          if (result.status === 1) {
+            console.log("登录成功！");
+            console.log("token:", result.data.token);
+            console.log("userid:", result.data.userid);
+            
+            loginStatus.textContent = '✓ 登录成功！';
+            loginStatus.style.color = 'green';
+
+            // 收集登录信息
+            const loginInfo = {
+              userid: result.data.userid,
+              token: result.data.token
+            };
+            console.log('登录信息:', loginInfo);
+
+            // 保存到localStorage
+            localStorage.setItem('loginInfo', JSON.stringify(loginInfo));
+
+            // 保存到服务器内存
+            try {
+              const saveRes = await fetch('/api/saveLogin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(loginInfo)
+              });
+              const saveResult = await saveRes.json();
+              console.log('登录信息保存结果:', saveResult);
+            } catch (error) {
+              console.error('保存到服务器失败:', error);
+            }
+
+            // 展示JSON结果
+            const jsonResultEl = document.getElementById('json-result');
+            jsonResultEl.textContent = JSON.stringify(result, null, 2);
+            jsonResultEl.style.display = 'block';
+            
+            // 隐藏登录表单
+            document.getElementById('code-form').style.display = 'none';
+          } else if (result.error_code === 34175) {
+            console.error("暂不支持多账号绑定手机登录");
+            loginStatus.textContent = '✗ 暂不支持多账号绑定手机登录';
+            loginStatus.style.color = 'red';
+          } else {
+            console.error("登录失败:", result);
+            loginStatus.textContent = '✗ 登录失败: ' + (result.msg || '未知错误');
+            loginStatus.style.color = 'red';
+          }
+        } catch (error) {
+          console.error('请求出错:', error);
+          loginStatus.textContent = '✗ 请求出错: ' + error.message;
+          loginStatus.style.color = 'red';
+        } finally {
+          loginBtn.disabled = false;
+        }
+      }
+
+      // 回车快捷键提交
+      document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('phone-input').addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') sendCaptcha();
+        });
+        document.getElementById('code-input').addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') loginWithCode();
+        });
+      });
+    </script>
+  </body>
+</html>

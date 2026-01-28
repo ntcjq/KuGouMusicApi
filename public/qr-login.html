@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>二维码登录 - 酷狗音乐 API</title>
+  </head>
+
+  <body>
+    <h1>酷狗 API - 二维码登录</h1>
+    <a href="./">返回首页</a>
+    
+    <div id="qrcode-container">
+      <button id="qr-login-btn" onclick="getQRCode()">生成二维码</button>
+      <div id="qrcode-display" style="margin: 20px 0;">
+        <img id="qrcode-img" src="" alt="二维码" style="max-width: 300px; display: none;" />
+        <p id="qr-status"></p>
+      </div>
+      <div id="poll-result"></div>
+      <div id="json-result" style="display: none; margin-top: 20px; text-align: left;"></div>
+    </div>
+
+    <style>
+      html,
+      body {
+        height: 100vh;
+        width: 100vw;
+        margin: 30px 0 0;
+        padding: 0;
+        background: #ffffff;
+        text-align: center;
+        overflow: auto;
+      }
+
+      * {
+        color: rgb(100, 100, 100);
+      }
+
+      a {
+        color: #42b983;
+      }
+
+      #qrcode-container {
+        margin: 30px auto;
+        padding: 20px;
+        max-width: 400px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background: #f9f9f9;
+      }
+
+      #qr-login-btn {
+        padding: 10px 20px;
+        font-size: 16px;
+        background-color: #42b983;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+
+      #qr-login-btn:hover {
+        background-color: #369970;
+      }
+
+      #qr-login-btn:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+
+      #qrcode-img {
+        border: 1px solid #ddd;
+        padding: 5px;
+        background: white;
+      }
+
+      #qr-status, #poll-result {
+        margin: 10px 0;
+        font-size: 14px;
+        color: #666;
+      }
+
+      #json-result {
+        background-color: #f5f5f5;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        max-width: 500px;
+        margin: 20px auto;
+        max-height: 400px;
+        overflow: auto;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+    </style>
+
+    <script>
+      let qrcodeKey = null;
+
+      async function getQRCode() {
+        const btn = document.getElementById('qr-login-btn');
+        const statusEl = document.getElementById('qr-status');
+        const imgEl = document.getElementById('qrcode-img');
+        
+        try {
+          btn.disabled = true;
+          statusEl.textContent = '正在生成二维码...';
+          imgEl.style.display = 'none';
+
+          const response = await fetch(`/login/qr/key?timestrap=${Date.now()}`);
+          const result = await response.json();
+
+          if (result.status === 1) {
+            qrcodeKey = result.data.qrcode;
+            const imgBase64 = result.data.qrcode_img;
+            
+            // 设置二维码图片
+            imgEl.src = imgBase64;
+            imgEl.style.display = 'block';
+            statusEl.textContent = '请使用酷狗APP扫描二维码并确认登录';
+            
+            // 开始轮询检查登录状态
+            pollQRCodeStatus();
+          } else {
+            statusEl.textContent = '生成二维码失败: ' + (result.msg || '未知错误');
+            console.error('生成二维码失败:', result);
+          }
+        } catch (error) {
+          statusEl.textContent = '请求出错: ' + error.message;
+          console.error('请求出错:', error);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      async function delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+
+      async function pollQRCodeStatus() {
+        const pollResultEl = document.getElementById('poll-result');
+        const statusEl = document.getElementById('qr-status');
+        if (!qrcodeKey) return;
+
+        console.log("正在等待，请扫描二维码并确认登录");
+        pollResultEl.textContent = '正在等待，请扫描二维码并确认登录...';
+
+        // 轮询25次，每次间隔5秒
+        for (let i = 0; i < 25; i++) {
+          try {
+            const timestrap = Date.now();
+            const response = await fetch(`/login/qr/check?key=${qrcodeKey}&timestrap=${timestrap}`);
+            const result = await response.json();
+            const status = result?.data?.status;
+
+            switch (status) {
+              case 0:
+                console.log("二维码已过期");
+                pollResultEl.textContent = '✗ 二维码已过期，请重新生成';
+                pollResultEl.style.color = 'red';
+                return;
+
+              case 1:
+                console.log("未扫描二维码");
+                pollResultEl.textContent = '等待扫描二维码...';
+                break;
+
+              case 2:
+                console.log("二维码未确认，请点击确认登录");
+                pollResultEl.textContent = '请在APP上确认登录...';
+                pollResultEl.style.color = 'orange';
+                break;
+
+              case 4:
+                console.log("登录成功！");
+                pollResultEl.textContent = '✓ 登录成功！';
+                pollResultEl.style.color = 'green';
+                
+                // 收集登录信息
+                const loginInfo = {
+                  userid: result.data.userid,
+                  token: result.data.token
+                };
+                console.log('登录信息:', loginInfo);
+                
+                // 可以在这里将登录信息保存到localStorage或发送到后端
+                localStorage.setItem('loginInfo', JSON.stringify(loginInfo));
+                
+                // 保存到服务器内存
+                try {
+                  const saveRes = await fetch('/api/saveLogin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(loginInfo)
+                  });
+                  const saveResult = await saveRes.json();
+                  console.log('登录信息保存结果:', saveResult);
+                } catch (error) {
+                  console.error('保存到服务器失败:', error);
+                }
+                
+                // 展示JSON结果
+                const jsonResultEl = document.getElementById('json-result');
+                jsonResultEl.textContent = JSON.stringify(result, null, 2);
+                jsonResultEl.style.display = 'block';
+                jsonResultEl.style.color = '#333';
+                return;
+
+              default:
+                console.log("请求出错");
+                console.log("响应内容:", result);
+                pollResultEl.textContent = '✗ 请求出错';
+                pollResultEl.style.color = 'red';
+            }
+
+            if (status === 4 || status === 0) {
+              break;
+            }
+
+            if (i === 24) {
+              console.log("等待超时");
+              pollResultEl.textContent = '✗ 等待超时，请重新生成二维码';
+              pollResultEl.style.color = 'red';
+              break;
+            }
+
+            await delay(5000);
+          } catch (error) {
+            console.error('轮询出错:', error);
+            pollResultEl.textContent = '✗ 轮询出错: ' + error.message;
+            pollResultEl.style.color = 'red';
+          }
+        }
+      }
+    </script>
+  </body>
+</html>

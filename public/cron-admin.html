@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>定时签到管理 - 酷狗音乐 API</title>
+  </head>
+
+  <body>
+    <h1>酷狗 API - 定时签到管理</h1>
+    <a href="./">返回首页</a>
+    
+    <div id="admin-container">
+      <div id="logins-section">
+        <h2>已保存的登录账户</h2>
+        <button onclick="refreshLogins()">刷新列表</button>
+        <button onclick="clearAllLogins()" style="background-color: #ff6b6b;">清空所有</button>
+        <div id="logins-list"></div>
+      </div>
+
+      <div id="cron-section" style="margin-top: 40px;">
+        <h2>定时任务配置</h2>
+        <div id="cron-config">
+          <label>选择账户:</label>
+          <select id="userid-select"></select>
+          
+          <label style="margin-left: 20px;">执行时间 (Cron表达式):</label>
+          <input type="text" id="cron-time" value="0 2 * * *" placeholder="默认每天凌晨2点" style="width: 200px; padding: 8px;">
+          <small style="display: block; margin: 5px 0;">Cron格式: 分 时 日 月 周 (例: 0 2 * * * = 每天02:00)</small>
+          
+          <button onclick="startCron()" style="margin-top: 10px;">启动定时签到</button>
+        </div>
+
+        <h2>任务状态</h2>
+        <button onclick="refreshCronStatus()">刷新状态</button>
+        <div id="cron-status"></div>
+      </div>
+    </div>
+
+    <style>
+      html,
+      body {
+        height: 100vh;
+        width: 100vw;
+        margin: 30px 0 0;
+        padding: 0;
+        background: #ffffff;
+        text-align: center;
+        overflow: auto;
+      }
+
+      * {
+        color: rgb(100, 100, 100);
+      }
+
+      a {
+        color: #42b983;
+      }
+
+      #admin-container {
+        margin: 30px auto;
+        padding: 20px;
+        max-width: 700px;
+        text-align: left;
+      }
+
+      h2 {
+        margin: 20px 0 15px 0;
+        border-bottom: 2px solid #42b983;
+        padding-bottom: 10px;
+      }
+
+      button {
+        padding: 8px 16px;
+        font-size: 14px;
+        background-color: #42b983;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+        margin: 5px;
+      }
+
+      button:hover {
+        background-color: #369970;
+      }
+
+      button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+
+      #logins-list {
+        background-color: #f5f5f5;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        margin: 15px 0;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .login-item {
+        background: white;
+        padding: 12px;
+        margin: 8px 0;
+        border-radius: 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-left: 4px solid #42b983;
+      }
+
+      .login-info {
+        flex: 1;
+      }
+
+      .login-info p {
+        margin: 4px 0;
+        font-size: 14px;
+      }
+
+      .login-item button {
+        padding: 6px 12px;
+        font-size: 12px;
+        margin: 0 5px;
+      }
+
+      .login-item button.delete {
+        background-color: #ff6b6b;
+      }
+
+      .login-item button.delete:hover {
+        background-color: #ee5a52;
+      }
+
+      select,
+      input {
+        padding: 8px;
+        font-size: 14px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin: 5px;
+      }
+
+      #cron-config label {
+        display: inline-block;
+        margin: 10px 0;
+      }
+
+      #cron-status {
+        background-color: #f5f5f5;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        margin: 15px 0;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .cron-item {
+        background: white;
+        padding: 10px;
+        margin: 8px 0;
+        border-radius: 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .status-running {
+        color: green;
+        font-weight: bold;
+      }
+
+      .status-stopped {
+        color: red;
+      }
+
+      .cron-item button {
+        margin: 0 5px;
+      }
+
+      .cron-item button.manual {
+        background-color: #4a90e2;
+      }
+
+      .cron-item button.manual:hover {
+        background-color: #3a7bc8;
+      }
+
+      small {
+        color: #999;
+      }
+    </style>
+
+    <script>
+      async function refreshLogins() {
+        try {
+          const res = await fetch('/api/getLogins');
+          const result = await res.json();
+          
+          if (result.status === 1) {
+            const loginsList = document.getElementById('logins-list');
+            const userSelect = document.getElementById('userid-select');
+            
+            if (result.data.length === 0) {
+              loginsList.innerHTML = '<p style="text-align: center; color: #999;">暂无已保存的登录账户</p>';
+              userSelect.innerHTML = '<option>暂无账户</option>';
+              return;
+            }
+
+            loginsList.innerHTML = result.data.map(item => `
+              <div class="login-item">
+                <div class="login-info">
+                  <p><strong>用户ID:</strong> ${item.userid}</p>
+                  <p><strong>保存时间:</strong> ${new Date(item.savedAt).toLocaleString('zh-CN')}</p>
+                </div>
+                <button class="delete" onclick="deleteLogin('${item.userid}')">删除</button>
+              </div>
+            `).join('');
+
+            userSelect.innerHTML = result.data.map(item => 
+              `<option value="${item.userid}">用户 ${item.userid}</option>`
+            ).join('');
+          }
+        } catch (error) {
+          console.error('获取登录列表失败:', error);
+          alert('获取登录列表失败: ' + error.message);
+        }
+      }
+
+      async function deleteLogin(userid) {
+        if (!confirm(`确定要删除用户 ${userid} 的登录信息吗？`)) {
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/deleteLogin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userid })
+          });
+          const result = await res.json();
+          
+          if (result.status === 1) {
+            alert('删除成功');
+            refreshLogins();
+          } else {
+            alert('删除失败: ' + result.msg);
+          }
+        } catch (error) {
+          alert('请求失败: ' + error.message);
+        }
+      }
+
+      async function clearAllLogins() {
+        if (!confirm('确定要清空所有登录信息吗？这个操作无法撤销！')) {
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/clearLogins', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          const result = await res.json();
+          
+          if (result.status === 1) {
+            alert('已清空所有登录信息');
+            refreshLogins();
+            refreshCronStatus();
+          } else {
+            alert('清空失败: ' + result.msg);
+          }
+        } catch (error) {
+          alert('请求失败: ' + error.message);
+        }
+      }
+
+      async function startCron() {
+        const userid = document.getElementById('userid-select').value;
+        const cronTime = document.getElementById('cron-time').value;
+
+        if (!userid || userid === '暂无账户') {
+          alert('请先选择一个账户');
+          return;
+        }
+
+        if (!cronTime) {
+          alert('请输入Cron表达式');
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/startAutoCron', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userid, time: cronTime })
+          });
+          const result = await res.json();
+          
+          if (result.status === 1) {
+            alert(result.msg);
+            refreshCronStatus();
+          } else {
+            alert('启动失败: ' + result.msg);
+          }
+        } catch (error) {
+          alert('请求失败: ' + error.message);
+        }
+      }
+
+      async function stopCron(userid) {
+        if (!confirm(`确定要停止用户 ${userid} 的定时签到任务吗？`)) {
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/stopAutoCron', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userid })
+          });
+          const result = await res.json();
+          
+          if (result.status === 1) {
+            alert('已停止');
+            refreshCronStatus();
+          } else {
+            alert('停止失败: ' + result.msg);
+          }
+        } catch (error) {
+          alert('请求失败: ' + error.message);
+        }
+      }
+
+      async function manualCheckIn(userid) {
+        if (!confirm(`确定要为用户 ${userid} 手动签到吗？`)) {
+          return;
+        }
+
+        const btn = event.target;
+        btn.disabled = true;
+        btn.textContent = '签到中...';
+
+        try {
+          // 首先从服务端获取用户的token和userid
+          const loginRes = await fetch('/api/getLogins');
+          const loginResult = await loginRes.json();
+          
+          let userToken = null;
+          let actualUserid = null;
+          
+          if (loginResult.status === 1 && loginResult.data) {
+            const userLogin = loginResult.data.find(item => item.userid === userid);
+            if (userLogin) {
+              userToken = userLogin.token;
+              actualUserid = userLogin.userid;
+            }
+          }
+
+          if (!userToken || !actualUserid) {
+            alert('无法获取用户登录信息');
+            btn.disabled = false;
+            btn.textContent = '手动签到';
+            return;
+          }
+
+          // 获取用户信息验证
+          let userRes = await fetch(`/user/detail?timestrap=${Date.now()}`, {
+            headers: { 'Cookie': `token=${userToken}; userid=${actualUserid}` }
+          });
+          let userDetail = await userRes.json();
+
+          if (!userDetail?.data?.nickname) {
+            alert('token过期或账号不存在，请重新登录');
+            btn.disabled = false;
+            btn.textContent = '手动签到';
+            return;
+          }
+
+          console.log(`手动签到: 用户 ${userDetail.data.nickname}`);
+
+          // 听歌领取VIP
+          let listenRes = await fetch(`/youth/listen/song?timestrap=${Date.now()}`, {
+            headers: { 'Cookie': `token=${userToken}; userid=${actualUserid}` }
+          });
+          let listen = await listenRes.json();
+
+          if (listen.status === 1) {
+            console.log('听歌领取成功');
+          } else if (listen.error_code === 130012) {
+            console.log('听歌：今日已领取');
+          } else {
+            console.log('听歌领取失败');
+          }
+
+          // 领取VIP（循环8次）
+          let successCount = 0;
+          for (let i = 1; i <= 8; i++) {
+            let adRes = await fetch(`/youth/vip?timestrap=${Date.now()}`, {
+              headers: { 'Cookie': `token=${userToken}; userid=${actualUserid}` }
+            });
+            let ad = await adRes.json();
+
+            if (ad.status === 1) {
+              console.log(`第${i}次领取成功`);
+              successCount++;
+              if (i !== 8) {
+                const randomDelay = 30000 + Math.random() * 10000; // 随机30-40秒
+                console.log(`等待${(randomDelay/1000).toFixed(1)}秒后继续...`);
+                await new Promise(resolve => setTimeout(resolve, randomDelay));
+              }
+            } else if (ad.error_code === 30002) {
+              console.log('今日次数已用光');
+              break;
+            } else {
+              console.log(`第${i}次领取失败`);
+              break;
+            }
+          }
+
+          // 获取VIP详情
+          let vipRes = await fetch(`/user/vip/detail?timestrap=${Date.now()}`, {
+            headers: { 'Cookie': `token=${userToken}; userid=${actualUserid}` }
+          });
+          let vip = await vipRes.json();
+
+          if (vip.status === 1) {
+            alert(`签到成功！\n领取${successCount}次VIP\nVIP到期时间：${vip.data.busi_vip[0].vip_end_time}`);
+          } else {
+            alert(`签到完成！领取${successCount}次VIP`);
+          }
+
+          refreshCronStatus();
+        } catch (error) {
+          alert('请求失败: ' + error.message);
+          console.error('手动签到出错:', error);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '手动签到';
+        }
+      }
+
+      async function refreshCronStatus() {
+        try {
+          const res = await fetch('/api/getCronStatus');
+          const result = await res.json();
+          
+          const statusDiv = document.getElementById('cron-status');
+          
+          if (!result.data || Object.keys(result.data).length === 0) {
+            statusDiv.innerHTML = '<p style="text-align: center; color: #999;">暂无定时任务</p>';
+            return;
+          }
+
+          statusDiv.innerHTML = Object.entries(result.data).map(([userid, status]) => {
+            const isRunning = status === '运行中';
+            return `
+              <div class="cron-item">
+                <div>
+                  <p><strong>用户ID:</strong> ${userid}</p>
+                  <p><strong>状态:</strong> <span class="${isRunning ? 'status-running' : 'status-stopped'}">${status}</span></p>
+                </div>
+                <div>
+                  <button class="manual" onclick="manualCheckIn('${userid}')">手动签到</button>
+                  <button onclick="stopCron('${userid}')" ${!isRunning ? 'disabled' : ''}>停止任务</button>
+                </div>
+              </div>
+            `;
+          }).join('');
+        } catch (error) {
+          console.error('获取任务状态失败:', error);
+        }
+      }
+
+      // 页面加载时初始化
+      window.addEventListener('load', () => {
+        refreshLogins();
+        refreshCronStatus();
+        // 每30秒刷新一次状态
+        setInterval(refreshCronStatus, 30000);
+      });
+    </script>
+  </body>
+</html>
