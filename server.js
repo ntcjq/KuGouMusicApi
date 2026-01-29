@@ -5,7 +5,8 @@ const decode = require('safe-decode-uri-component');
 const { cookieToJson, randomNumber, randomString } = require('./util/util');
 const { createRequest } = require('./util/request');
 const dotenv = require('dotenv');
-const cache = require('./util/apicache').middleware;
+const apicache = require('./util/apicache');
+const cache = apicache.middleware;
 const cron = require('node-cron');
 
 /**
@@ -152,24 +153,84 @@ async function consturctServer(moduleDefs) {
    */
   // 保存登录信息到内存
   app.post('/api/saveLogin', express.json(), (req, res) => {
+    const start = process.hrtime.bigint();
     const { userid, token } = req.body;
     if (!userid || !token) {
+      const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+      res.set('X-Elapsed-Ms', String(elapsedMs.toFixed(3)));
       return res.json({ status: 0, msg: '缺少userid或token' });
     }
     
     loginStore[userid] = { userid, token, savedAt: new Date() };
-    console.log(`[Login] 保存登录信息: userid=${userid}`);
-    res.json({ status: 1, msg: '登录信息已保存到服务器内存' });
+    const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+    console.log(`[Login] 保存登录信息: userid=${userid} (elapsed: ${elapsedMs.toFixed(3)}ms)`);
+
+    // 清理缓存，确保 /api/getLogins 立刻返回最新数据
+    try {
+      apicache.clear();
+      console.log('[Cache] apicache cleared after saveLogin');
+    } catch (e) {
+      console.warn('[Cache] 清理缓存失败:', e.message);
+    }
+
+    // 调试：打印完整的 loginStore 及当前进程PID
+    try {
+      console.log('[Login] 当前 loginStore:', JSON.stringify(loginStore));
+    } catch (e) {
+      console.log('[Login] 当前 loginStore (stringify failed)');
+    }
+    console.log(`[Login] 处理进程 PID: ${process.pid}`);
+    // 返回时带上耗时和进程ID，便于前端比对
+    res.set('X-Elapsed-Ms', String(elapsedMs.toFixed(3)));
+    res.set('X-PID', String(process.pid));
+    res.json({ status: 1, msg: '登录信息已保存到服务器内存', elapsedMs, pid: process.pid });
   });
 
   // 获取所有已保存的登录信息
   app.get('/api/getLogins', (req, res) => {
+    const start = process.hrtime.bigint();
     const logins = Object.values(loginStore).map(item => ({
       userid: item.userid,
       token: item.token,
       savedAt: item.savedAt
     }));
-    res.json({ status: 1, data: logins });
+    const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+    console.log(`[Login] 返回登录列表 (count=${logins.length}, elapsed: ${elapsedMs.toFixed(3)}ms)`);
+    // 调试：打印当前 loginStore 与处理进程 PID
+    try {
+      console.log('[Login] 当前 loginStore:', JSON.stringify(loginStore));
+    } catch (e) {
+      console.log('[Login] 当前 loginStore (stringify failed)');
+    }
+    console.log(`[Login] 处理进程 PID: ${process.pid}`);
+
+    res.set('X-Elapsed-Ms', String(elapsedMs.toFixed(3)));
+    res.set('X-PID', String(process.pid));
+    res.json({ status: 1, data: logins, elapsedMs, pid: process.pid });
+  });
+
+  // 手动清除缓存（支持可选 body.target 来只清除包含该路径的缓存 key）
+  app.post('/api/clearCache', express.json(), (req, res) => {
+    const { target } = req.body || {};
+    try {
+      const idx = apicache.getIndex();
+      const allKeys = (idx && idx.all) || [];
+      if (!target) {
+        apicache.clear();
+        console.log('[Cache] 全部缓存已被清除 (manual)');
+        return res.json({ status: 1, msg: '已清空所有缓存', cleared: 'all' });
+      }
+
+      const keys = allKeys.filter(k => k.includes(target));
+      keys.forEach(k => {
+        apicache.clear(k);
+        console.log('[Cache] cleared key', k);
+      });
+      res.json({ status: 1, msg: `已清除 ${keys.length} 条缓存`, keys });
+    } catch (e) {
+      console.error('[Cache] 清除缓存失败:', e);
+      res.json({ status: 0, msg: e.message });
+    }
   });
 
   // 删除登录信息
@@ -181,6 +242,12 @@ async function consturctServer(moduleDefs) {
     
     delete loginStore[userid];
     console.log(`[Login] 删除登录信息: userid=${userid}`);
+    try {
+      apicache.clear();
+      console.log('[Cache] apicache cleared after deleteLogin');
+    } catch (e) {
+      console.warn('[Cache] 清理缓存失败:', e.message);
+    }
     res.json({ status: 1, msg: '登录信息已删除' });
   });
 
@@ -188,6 +255,12 @@ async function consturctServer(moduleDefs) {
   app.post('/api/clearLogins', (req, res) => {
     Object.keys(loginStore).forEach(key => delete loginStore[key]);
     console.log('[Login] 已清空所有登录信息');
+    try {
+      apicache.clear();
+      console.log('[Cache] apicache cleared after clearAllLogins');
+    } catch (e) {
+      console.warn('[Cache] 清理缓存失败:', e.message);
+    }
     res.json({ status: 1, msg: '所有登录信息已清空' });
   });
 
@@ -195,7 +268,10 @@ async function consturctServer(moduleDefs) {
   app.get('/api/getCronStatus', (req, res) => {
     const status = {};
     for (const userid in cronJobs) {
-      status[userid] = cronJobs[userid].running ? '运行中' : '已停止';
+      const job = cronJobs[userid];
+      // node-cron v4 的任务对象将运行状态放在 runner.running 中，做兼容性判断
+      const isRunning = !!(job && ((job.runner && job.runner.running) || job.stateMachine?.state === 'scheduled'));
+      status[userid] = isRunning ? '运行中' : '已停止';
     }
     res.json({ status: 1, data: status });
   });
@@ -282,6 +358,9 @@ async function consturctServer(moduleDefs) {
       }
     });
 
+    // 调试：打印任务创建后的 runner 状态，便于排查“已停止”问题
+    console.log(`[Cron] 任务创建后 runner.running: ${job.runner ? job.runner.running : 'unknown'}`);
+
     cronJobs[userid] = job;
     console.log(`[Cron] 已为用户 ${userid} 创建定时任务，执行时间: ${time}`);
     res.json({ status: 1, msg: `定时任务已创建，执行时间: ${time}` });
@@ -298,6 +377,17 @@ async function consturctServer(moduleDefs) {
     delete cronJobs[userid];
     console.log(`[Cron] 已停止用户 ${userid} 的定时任务`);
     res.json({ status: 1, msg: '定时任务已停止' });
+  });
+
+  // 调试接口：返回原始 loginStore（包含 token），便于排查为何列表为空
+  app.get('/api/debugLogins', (req, res) => {
+    try {
+      console.log('[Debug] /api/debugLogins 被调用');
+      console.log('[Debug] loginStore Snapshot:', JSON.stringify(loginStore));
+    } catch (e) {
+      console.log('[Debug] loginStore stringify failed');
+    }
+    res.json({ status: 1, data: loginStore, pid: process.pid });
   });
 
   const moduleDefinitions = moduleDefs || (await getModulesDefinitions(path.join(__dirname, 'module'), {}));

@@ -228,15 +228,20 @@
             // 保存到localStorage
             localStorage.setItem('loginInfo', JSON.stringify(loginInfo));
 
-            // 保存到服务器内存
+            // 保存到服务器内存（测量耗时以排查延迟）
             try {
+              const t0 = performance.now();
               const saveRes = await fetch('/api/saveLogin', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(loginInfo)
               });
+              const t1 = performance.now();
+              const serverMs = saveRes.headers.get('X-Elapsed-Ms');
               const saveResult = await saveRes.json();
-              console.log('登录信息保存结果:', saveResult);
+              console.log('登录信息保存结果:', saveResult, `(client elapsed: ${(t1-t0).toFixed(1)}ms, server-elapsed: ${serverMs}ms)`);
+              // 通知其他页面（如管理页面）登录已更新
+              try { localStorage.setItem('loginsUpdated', String(Date.now())); } catch (e) {}
             } catch (error) {
               console.error('保存到服务器失败:', error);
             }
