@@ -2,7 +2,10 @@ FROM node:lts-alpine
 
 RUN apk add --no-cache tini
 
-ENV NODE_ENV production
+# 全局安装 pnpm
+RUN npm install -g pnpm
+
+ENV NODE_ENV=production
 
 USER node
 
@@ -10,7 +13,8 @@ WORKDIR /app
 
 COPY --chown=node:node . ./
 
-RUN yarn --network-timeout=100000
+# 使用 pnpm 安装依赖
+RUN pnpm install --no-frozen-lockfile
 
 EXPOSE 3000
 
