@@ -313,6 +313,7 @@
                 <div class="login-info">
                   <p><strong>用户ID:</strong> ${item.userid}</p>
                   <p><strong>保存时间:</strong> ${new Date(item.savedAt).toLocaleString('zh-CN')}</p>
+                  <p><strong>VIP到期:</strong> <span id="vip-${item.userid}">加载中...</span></p>
                 </div>
                 <div>
                   <button class="manual" onclick="manualCheckIn('${item.userid}')">手动签到</button>
@@ -320,6 +321,34 @@
                 </div>
               </div>
             `).join('');
+
+            // 异步获取每个用户的VIP到期时间并更新UI
+            result.data.forEach(async (item) => {
+              const el = document.getElementById(`vip-${item.userid}`);
+              if (!el) return;
+
+              try {
+                const vipRes = await fetch(`/user/vip/detail?timestrap=${Date.now()}`, {
+                  headers: { 'Cookie': `token=${item.token}; userid=${item.userid}` }
+                });
+                const vip = await vipRes.json();
+
+                if (vip && vip.status === 1 && vip.data && vip.data.busi_vip && vip.data.busi_vip[0] && vip.data.busi_vip[0].vip_end_time) {
+                  // 显示为本地时间
+                  const dt = new Date(vip.data.busi_vip[0].vip_end_time);
+                  el.textContent = isNaN(dt.getTime()) ? vip.data.busi_vip[0].vip_end_time : dt.toLocaleString('zh-CN');
+                } else if (vip && vip.error_code === 400) {
+                  el.textContent = '未开通';
+                } else if (vip && vip.status === 0) {
+                  el.textContent = '无数据';
+                } else {
+                  el.textContent = '无法获取';
+                }
+              } catch (error) {
+                el.textContent = '请求失败';
+                console.error(`获取用户 ${item.userid} VIP 到期失败:`, error);
+              }
+            });
 
             userSelect.innerHTML = result.data.map(item => 
               `<option value="${item.userid}">用户 ${item.userid}</option>`
