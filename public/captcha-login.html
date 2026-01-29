@@ -8,9 +8,6 @@
   </head>
 
   <body>
-    <h1>酷狗 API - 验证码登录</h1>
-    <a href="./">返回首页</a>
-    
     <div id="login-container">
       <div id="phone-form">
         <h2>第一步：输入手机号</h2>
@@ -47,11 +44,12 @@
       body {
         height: 100vh;
         width: 100vw;
-        margin: 30px 0 0;
+        margin: 0;
         padding: 0;
         background: #ffffff;
         text-align: center;
-        overflow: auto;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
 
       * {
@@ -63,46 +61,73 @@
       }
 
       #login-container {
-        margin: 30px auto;
+        margin: 0;
         padding: 20px;
-        max-width: 500px;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        background: #f9f9f9;
+        max-width: 100%;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        border-radius: 0;
+        background: #ffffff;
+        box-sizing: border-box;
+        overflow: hidden;
       }
 
       #phone-form, #code-form {
-        padding: 15px 0;
+        padding: 10px 0;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        overflow: hidden;
       }
 
       input[type="tel"],
       input[type="text"] {
-        margin: 10px 5px;
-        padding: 10px;
+        margin: 8px 5px;
+        padding: 12px 16px;
         font-size: 16px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
+        border: 2px solid #e0e0e0;
+        border-radius: 6px;
+        transition: all 0.3s ease;
+        width: 240px;
+      }
+
+      input[type="tel"]:focus,
+      input[type="text"]:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
       }
 
       button {
-        padding: 10px 20px;
+        padding: 12px 32px;
         font-size: 16px;
-        background-color: #42b983;
+        font-weight: 600;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         border: none;
-        border-radius: 4px;
+        border-radius: 6px;
         cursor: pointer;
-        transition: background-color 0.3s;
-        margin: 0 5px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        margin: 8px 5px;
       }
 
-      button:hover {
-        background-color: #369970;
+      button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
       }
 
       button:disabled {
-        background-color: #ccc;
+        background: #ccc;
         cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
       }
 
       #send-status, #login-status {
@@ -110,27 +135,37 @@
         font-size: 14px;
         color: #666;
         min-height: 20px;
+        font-weight: 500;
       }
 
       #json-result {
         background-color: #f5f5f5;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 15px;
-        max-width: 500px;
-        margin: 20px auto;
-        max-height: 400px;
-        overflow: auto;
-        font-family: 'Courier New', monospace;
-        font-size: 12px;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        padding: 12px;
+        max-width: 90%;
+        margin: 10px auto 0;
+        max-height: 200px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        font-family: 'Monaco', 'Courier New', monospace;
+        font-size: 11px;
         white-space: pre-wrap;
         word-break: break-all;
         text-align: left;
-        color: #333;
+        line-height: 1.4;
       }
 
       h2 {
-        margin: 15px 0;
+        margin: 15px 0 20px 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+      }
+
+      p {
+        margin: 8px 0;
+        font-size: 14px;
       }
     </style>
 

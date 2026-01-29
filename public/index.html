@@ -8,47 +8,155 @@
   </head>
 
   <body>
-    <h1>酷狗 API</h1>
-    当你看到这个页面时,这个服务已经成功跑起来了~
-    <a href="//kugoumusicapi-docs.4everland.app/">查看文档</a>
-    <h2>例子:</h2>
-    <ul>
-      <li>1. <a href="./qr-login.html">二维码登录</a></li>
-      <li>2. <a href="./captcha-login.html">验证码登录</a></li>
-      <li>3. <a href="./cron-admin.html">定时签到管理</a></li>
-    </ul>
+    <div class="container">
+      <!-- 左边一半 -->
+      <div class="left-panel">
+        <!-- 上半部分：扫码登录 -->
+        <div class="section qr-section">
+          <h3>二维码登录</h3>
+          <iframe src="./qr-login.html" frameborder="0" scrolling="auto"></iframe>
+        </div>
+        
+        <!-- 下半部分：短信登录 -->
+        <div class="section captcha-section">
+          <h3>验证码登录</h3>
+          <iframe src="./captcha-login.html" frameborder="0" scrolling="auto"></iframe>
+        </div>
+      </div>
+
+      <!-- 右边一半 -->
+      <div class="right-panel">
+        <!-- 定时签到 -->
+        <div class="section cron-section">
+          <h3>定时签到管理</h3>
+          <iframe src="./cron-admin.html" frameborder="0" scrolling="auto"></iframe>
+        </div>
+      </div>
+    </div>
+
     <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
       html,
       body {
         height: 100vh;
         width: 100vw;
-        margin: 30px 0 0;
-        padding: 0;
-        background: #ffffff;
-        text-align: center;
+        background: #f0f2f5;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         overflow: hidden;
       }
 
-      * {
-        color: rgb(100, 100, 100);
+      .container {
+        display: flex;
+        height: 100vh;
+        gap: 2px;
+        background: #ddd;
       }
 
-      a {
-        color: #42b983;
+      .left-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        background: #ddd;
+        overflow: hidden;
       }
 
-      ul,
-      li {
+      .right-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: #ddd;
+      }
+
+      .section {
+        background: #ffffff;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        position: relative;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+
+      .qr-section,
+      .captcha-section {
+        flex: 1;
+        min-height: 0;
+      }
+
+      .cron-section {
+        flex: 1;
+        min-height: 0;
+      }
+
+      .section h3 {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 14px 20px;
         margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        text-align: center;
+        flex-shrink: 0;
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
       }
 
-      ul {
-        margin-left: -40px;
-        line-height: 30px;
+      .section iframe {
+        flex: 1;
+        width: 100%;
+        border: none;
+        overflow: auto;
+        background: #ffffff;
       }
 
-      li {
-        list-style: none;
+      /* 响应式设计 */
+      @media (max-width: 1024px) {
+        .container {
+          flex-direction: column;
+        }
+
+        .left-panel {
+          flex-direction: row;
+          gap: 2px;
+        }
+
+        .qr-section,
+        .captcha-section {
+          flex: 1;
+          min-height: 0;
+        }
+
+        .right-panel {
+          flex: 1;
+          min-height: 0;
+        }
+      }
+
+      @media (max-width: 768px) {
+        .container {
+          flex-direction: column;
+        }
+
+        .left-panel {
+          flex-direction: column;
+        }
+
+        .qr-section,
+        .captcha-section,
+        .right-panel {
+          flex: 1;
+          min-height: 0;
+        }
+
+        .section h3 {
+          font-size: 14px;
+          padding: 12px 16px;
+        }
       }
     </style>
   </body>
